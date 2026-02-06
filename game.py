@@ -24,7 +24,7 @@ class Cards:
 
 class Game:
     def __init__(self,players:int = 4) -> None:
-        self.players = []
+        self.players: list[Player] = []
         for i in range(players):
             self.players.append(Player(self,name=str(i)))
         self.__shuffle()
@@ -35,6 +35,62 @@ class Game:
 
     def draw_card(self):
         return self._deck.pop()
+    
+    def play_game(self) -> None:
+        max_score = 0
+        #while max_score < 200:
+        while self.check_active_players():
+            round_max_score = 0
+            
+            for player in self.players:
+                if player.active:
+                    active, score, game_score = player.turn(max_score)
+                    max_score = max(game_score, max_score)
+                    round_max_score = max(score,round_max_score)
+
+                    if player.count_hand() > 6:
+                        player.game_score = player.round_score + 15
+                        player.active = False
+                        logging.info(f"Player {player.name}] won the round + 15 bonus - total {player.round_score+15}")
+                        break
+        for player in self.players:
+            player.reset_hand()
+            player.active = True
+            player.round_score = 0
+
+    def check_active_players(self) -> bool:
+        for player in self.players:
+            if player.active:
+                return True
+        return False
+    
+    def play_freeze(self, calling_player: 'Player') -> None:
+        max_player = None
+        for player in self.players:
+            if player != calling_player and player.active:
+                if max_player is None or (player.game_score + player.round_score) > (max_player.game_score + max_player.round_score):
+                    max_player = player
+
+        freeze_player = max_player if max_player is not None else calling_player
+        freeze_player.active = False
+        logging.info(f"[Player {calling_player.name}] froze Player {freeze_player.name}")
+
+    def play_draw_3(self, calling_player: 'Player') -> None:
+        max_player = None
+        max_score = 0
+        for player in self.players:
+            max_score = max(max_score, player.game_score)
+            if player != calling_player and player.active:
+                if max_player is None or (player.game_score + player.round_score) > (max_player.game_score + max_player.round_score):
+                    max_player = player
+
+        draw_player = max_player if max_player is not None else calling_player
+        logging.info(f"[Player {calling_player.name}] forced Player {draw_player.name} to draw 3 cards")
+        for _ in range(3):
+            draw_player.turn(max_score)
+            if not draw_player.active:
+                break
+        
 
 class Player:
     def __init__(self, game: Game, name:str = '') -> None:
@@ -83,7 +139,7 @@ class Player:
         if self.hand[18]: score *= 2
         return score
         
-    def turn(self, max_score: int) -> None:
+    def turn(self, max_score: int) -> tuple[bool, int, int]:
         def determine_vector():
             return self.hand + [self.round_score,self.game_score,max_score]
         vector = determine_vector()
@@ -134,13 +190,16 @@ class Player:
             self.reset_hand()
         else:
             logging.info(f"[Player {self.name}] new hand: {self.hand_to_str()}")
+            logging.info(f"[Player {self.name}] # of cards: {self.count_hand()}")
             logging.info(f"[Player {self.name}] new score: {self.round_score}")
+        logging.info('*'*80)
+        return (self.active,self.round_score,self.game_score)
 
     def play_freeze(self) -> None:
-        pass
+        self.game.play_freeze(self)
 
     def play_draw_3(self) -> None:
-        pass
+        self.game.play_draw_3(self)
 
     def check_busted(self, card: int) -> bool:
         return self.hand[card] == 1
@@ -156,6 +215,9 @@ class Player:
             self.hand[19] = 0
             return True
         return False
+
+    def count_hand(self) -> int:
+        return sum(self.hand[:13])
 
     def hand_to_str(self) -> str:
         special_cards = {
@@ -183,14 +245,5 @@ class Player:
 
 if __name__ == '__main__':
     game = Game()
-    p1 = Player(game)
-    for i in range(50):
-        p1.turn(0)
-        if p1.active == False:
-            print("*"*80)
-            print("New Round")
-            print("*"*80)
-            p1.active = True
-        else:
-            print("-"*80)
+    game.play_game()
     pass
